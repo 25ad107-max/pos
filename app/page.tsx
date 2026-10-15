@@ -14,8 +14,11 @@ import {
   Gauge,
   LayoutDashboard,
   LogOut,
+  MapPin,
   Menu,
+  Phone,
   Plus,
+  RefreshCw,
   Search,
   Settings2,
   ShieldCheck,
@@ -23,6 +26,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 type Role = "SUPER_ADMIN" | "MANAGER" | "BILLING_STAFF" | "STAFF" | "DRIVER";
@@ -44,6 +48,7 @@ type Driver = {
   emergencyContact: string | null;
   notes: string | null;
   status: "ACTIVE" | "INACTIVE";
+  userId: string | null;
   _count: { loads: number; assignedVehicles: number };
   assignedVehicles: { id: string; vehicleNumber: string }[];
 };
@@ -323,7 +328,7 @@ export default function Home() {
             </span>
             <p className="eyebrow">WELCOME BACK</p>
             <h2>Sign in to your account</h2>
-            <p className="muted">Use your Maruthi Transport staff credentials.</p>
+            <p className="muted">Use your Maruthi Transport staff or driver account.</p>
             <form className="login-form" onSubmit={signIn}>
               <label htmlFor="email">Email address</label>
               <input id="email" name="email" type="email" autoComplete="username" required placeholder="you@maruthitransport.in" />
@@ -334,12 +339,16 @@ export default function Home() {
                 {loginPending ? "Signing in…" : "Sign in securely"}
               </button>
             </form>
-            <p className="login-help">Need access? Ask your system administrator to create an account.</p>
+            <p className="login-help">Need access? Ask your manager to create an account.</p>
           </div>
           <span className="login-copyright">© {new Date().getFullYear()} Maruthi Transport · In and around Chennai</span>
         </section>
       </main>
     );
+  }
+
+  if (user.role === "DRIVER") {
+    return <DriverPortal user={user} onSignOut={signOut} />;
   }
 
   return (
@@ -397,9 +406,10 @@ function AppShell({
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [pageError, setPageError] = useState("");
-  const [dialog, setDialog] = useState<"driver" | "vehicle" | null>(null);
+  const [dialog, setDialog] = useState<"driver" | "vehicle" | "driver-account" | null>(null);
   const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
+  const [accountDriver, setAccountDriver] = useState<Driver | null>(null);
   const canManage = user.role === "SUPER_ADMIN" || user.role === "MANAGER";
   const activePage = navItems.find((item) => item.id === section);
   const visibleNavItems = canManage ? navItems : [navItems[0]];
@@ -591,10 +601,6 @@ function AppShell({
               {section === id && <span className="nav-active-dot" />}
             </button>
           ))}
-          <span className="nav-group-label nav-group-lower">OPERATIONS</span>
-          <div className="nav-coming"><Box size={17} /><span>Orders &amp; loads</span><small>SOON</small></div>
-          <div className="nav-coming"><CreditCard size={17} /><span>Billing &amp; payments</span><small>SOON</small></div>
-          <div className="nav-coming"><Activity size={17} /><span>Reports &amp; salary</span><small>SOON</small></div>
         </nav>
         <div className="sidebar-bottom">
           <div className="secure-note"><ShieldCheck size={15} /><span>Secure workspace</span><span className="secure-pulse" /></div>
@@ -637,6 +643,22 @@ function AppShell({
               canManage={canManage}
             />
           )}
+          {dialog === "driver-account" && canManage && accountDriver && (
+            <DriverAccountDialog
+              driver={accountDriver}
+              onClose={() => { setDialog(null); setAccountDriver(null); }}
+              onCreate={async (email, password) => {
+                await api(`/api/drivers/${accountDriver.id}/account`, {
+                  method: "POST",
+                  body: JSON.stringify({ email, password }),
+                });
+                setNotice(`Driver login created for ${accountDriver.name}. Share the credentials securely.`);
+                setDialog(null);
+                setAccountDriver(null);
+                await loadDrivers();
+              }}
+            />
+          )}
           {section === "drivers" && (
             <section className="management-page">
               <div className="page-heading">
@@ -661,7 +683,19 @@ function AppShell({
                           <td><strong className="table-primary">{currency(driver.ratePerLoad)}</strong></td>
                           <td><strong className="table-primary">{driver._count.assignedVehicles}</strong><small className="table-sub">{driver._count.loads} loads</small></td>
                           <td><StatusBadge status={driver.status} /></td>
-                          {canManage && <td><RowActions onEdit={() => startDriverEdit(driver)} onArchive={() => void archiveRecord("drivers", driver.id, driver.name)} /></td>}
+                          {canManage && <td className="driver-actions-cell">
+                            {!driver.userId && driver.status === "ACTIVE" && (
+                              <button
+                                className="button button-ghost account-setup-button"
+                                onClick={() => { setAccountDriver(driver); setDialog("driver-account"); }}
+                                type="button"
+                              >
+                                Set up login
+                              </button>
+                            )}
+                            {driver.userId && <span className="login-linked">Login enabled</span>}
+                            <RowActions onEdit={() => startDriverEdit(driver)} onArchive={() => void archiveRecord("drivers", driver.id, driver.name)} />
+                          </td>}
                         </tr>
                       ))}
                       {filteredDrivers.length === 0 && <tr><td colSpan={canManage ? 8 : 7}><EmptyState icon="driver" title={query ? "No matching drivers" : "No drivers added yet"} detail={query ? "Try another name, phone or licence number." : "Add a driver to start managing your team."} action={canManage && !query ? <button className="button button-secondary" onClick={() => setDialog("driver")} type="button"><Plus size={16} /> Add first driver</button> : undefined} /></td></tr>}
@@ -731,6 +765,179 @@ function AppShell({
       )}
     </div>
   );
+}
+
+type DriverLoad = {
+  id: string;
+  loadNumber: string;
+  status: "ASSIGNED" | "ACCEPTED" | "IN_TRANSIT" | "DELIVERED" | "CANCELLED";
+  quantity: string | number;
+  deliveryDate: string | null;
+  driverNotes: string | null;
+  order: {
+    orderNumber: string;
+    deliveryLocation: string;
+    deliveryDate: string | null;
+    material: { name: string };
+    customer: { name: string; phone: string };
+  };
+  vehicle: { vehicleNumber: string; vehicleType: string };
+};
+
+function DriverPortal({ user, onSignOut }: { user: User; onSignOut: () => void }) {
+  const [driver, setDriver] = useState<{
+    driverNumber: string;
+    name: string;
+    assignedVehicles: { vehicleNumber: string; vehicleType: string }[];
+  } | null>(null);
+  const [loads, setLoads] = useState<DriverLoad[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyLoad, setBusyLoad] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const result = await api<{
+        driver: NonNullable<typeof driver>;
+        loads: DriverLoad[];
+      }>("/api/driver/loads");
+      setDriver(result.driver);
+      setLoads(result.loads);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to load your deliveries.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => void refresh(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [refresh]);
+
+  async function advanceLoad(load: DriverLoad) {
+    const nextStatus = nextLoadStatus(load.status);
+    if (!nextStatus) return;
+    setBusyLoad(load.id);
+    setError("");
+    setNotice("");
+    try {
+      await api(`/api/driver/loads/${load.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      setNotice(`Delivery ${load.loadNumber} updated to ${loadStatusLabel(nextStatus)}.`);
+      await refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to update this delivery.");
+    } finally {
+      setBusyLoad("");
+    }
+  }
+
+  const activeLoads = loads.filter((load) => load.status !== "DELIVERED" && load.status !== "CANCELLED");
+  const completedLoads = loads.filter((load) => load.status === "DELIVERED").length;
+
+  return (
+    <main className="driver-portal">
+      <header className="driver-topbar">
+        <Link className="brand-lockup" href="/" aria-label="Maruthi Transport">
+          <span className="brand-mark"><Truck size={21} /></span>
+          <span><strong>MARUTHI</strong><small>TRANSPORT</small></span>
+        </Link>
+        <div className="driver-user-menu">
+          <span className="topbar-avatar">{initials(user.name)}</span>
+          <span><strong>{user.name}</strong><small>Driver portal</small></span>
+          <button className="button button-secondary" onClick={onSignOut} type="button"><LogOut size={15} /> Sign out</button>
+        </div>
+      </header>
+
+      <div className="driver-content">
+        <section className="driver-welcome">
+          <div>
+            <span className="eyebrow">YOUR DELIVERY WORKSPACE</span>
+            <h1>Good day, {driver?.name || user.name}</h1>
+            <p>View your assigned deliveries and update their progress as you go.</p>
+          </div>
+          <button className="button button-secondary" onClick={() => void refresh()} disabled={loading} type="button">
+            <RefreshCw size={16} /> Refresh
+          </button>
+        </section>
+
+        {error && <div className="page-error"><CircleAlert size={17} /><span>{error}</span><button className="retry-button" onClick={() => void refresh()} type="button">Retry</button></div>}
+        {notice && <div className="toast"><Check size={16} /><span>{notice}</span><button onClick={() => setNotice("")} aria-label="Dismiss" type="button"><X size={15} /></button></div>}
+
+        <section className="driver-summary">
+          <article className="driver-summary-card"><span>ACTIVE DELIVERIES</span><strong>{loading ? "—" : activeLoads.length}</strong><small>Assigned to you</small></article>
+          <article className="driver-summary-card"><span>COMPLETED</span><strong>{loading ? "—" : completedLoads}</strong><small>In the recent list</small></article>
+          <article className="driver-summary-card"><span>YOUR VEHICLE</span><strong>{driver?.assignedVehicles[0]?.vehicleNumber || "Not assigned"}</strong><small>{driver?.assignedVehicles[0]?.vehicleType || "Contact your manager"}</small></article>
+        </section>
+
+        <section className="driver-loads-section">
+          <div className="driver-section-heading">
+            <div><span className="eyebrow">ON THE ROAD</span><h2>Your deliveries</h2></div>
+            {driver && <span className="driver-number">{driver.driverNumber}</span>}
+          </div>
+          {loading && <div className="driver-empty">Loading your deliveries…</div>}
+          {!loading && loads.length === 0 && (
+            <div className="driver-empty"><Truck size={24} /><strong>No deliveries assigned</strong><span>New assignments from your manager will appear here.</span></div>
+          )}
+          {!loading && loads.length > 0 && (
+            <div className="driver-load-list">
+              {loads.map((load) => {
+                const nextStatus = nextLoadStatus(load.status);
+                return (
+                  <article className="driver-load-card" key={load.id}>
+                    <div className="driver-load-card-top">
+                      <div><span className="driver-load-label">LOAD {load.loadNumber}</span><h3>{load.order.material.name}</h3></div>
+                      <StatusBadge status={load.status} />
+                    </div>
+                    <div className="driver-load-details">
+                      <span><strong>Order</strong>{load.order.orderNumber}</span>
+                      <span><strong>Quantity</strong>{load.quantity} loads</span>
+                      <span><strong>Vehicle</strong>{load.vehicle.vehicleNumber} · {load.vehicle.vehicleType}</span>
+                      <span><strong>Scheduled</strong>{dateLabel(load.deliveryDate || load.order.deliveryDate)}</span>
+                    </div>
+                    <div className="driver-delivery-destination">
+                      <MapPin size={17} />
+                      <span><strong>{load.order.customer.name}</strong><small>{load.order.deliveryLocation}</small></span>
+                      <a href={`tel:${load.order.customer.phone}`} aria-label={`Call ${load.order.customer.name}`}><Phone size={16} /> Call</a>
+                    </div>
+                    {load.driverNotes && <p className="driver-instructions">{load.driverNotes}</p>}
+                    {nextStatus && (
+                      <button
+                        className="button button-primary driver-status-button"
+                        onClick={() => void advanceLoad(load)}
+                        disabled={busyLoad === load.id}
+                        type="button"
+                      >
+                        {busyLoad === load.id ? "Updating…" : nextStatus === "DELIVERED" ? "Mark delivered" : nextStatus === "IN_TRANSIT" ? "Start delivery" : "Accept delivery"}
+                      </button>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+          {!loading && loads.length === 50 && <p className="driver-history-note">Showing your 50 most recent deliveries.</p>}
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function loadStatusLabel(status: DriverLoad["status"]) {
+  return status.replaceAll("_", " ").toLowerCase().replace(/(^|\s)\S/g, (letter) => letter.toUpperCase());
+}
+
+function nextLoadStatus(status: DriverLoad["status"]): "ACCEPTED" | "IN_TRANSIT" | "DELIVERED" | null {
+  if (status === "ASSIGNED") return "ACCEPTED";
+  if (status === "ACCEPTED") return "IN_TRANSIT";
+  if (status === "IN_TRANSIT") return "DELIVERED";
+  return null;
 }
 
 function roleLabel(role: Role) {
@@ -1229,6 +1436,56 @@ function DriverDialog({
             {error && <div className="form-error modal-error"><CircleAlert size={16} />{error}</div>}
           </div>
           <div className="modal-footer"><span className="required-note"><i /> Required fields</span><div><button className="button button-ghost" onClick={onClose} type="button">Cancel</button><button className="button button-primary" type="submit" disabled={pending}>{pending ? "Saving…" : editing ? "Save changes" : "Add driver"}</button></div></div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function DriverAccountDialog({
+  driver,
+  onClose,
+  onCreate,
+}: {
+  driver: Driver;
+  onClose: () => void;
+  onCreate: (email: string, password: string) => Promise<void>;
+}) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setPending(true);
+    setError("");
+    try {
+      await onCreate(String(form.get("email") || ""), String(form.get("password") || ""));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to create driver login.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="form-modal account-modal" role="dialog" aria-modal="true" aria-labelledby="driver-account-title">
+        <div className="modal-header">
+          <div className="modal-title-icon"><ShieldCheck size={19} /></div>
+          <div><h2 id="driver-account-title">Create driver login</h2><p>{driver.name} · {driver.driverNumber}</p></div>
+          <button className="button-icon modal-close" onClick={onClose} type="button" aria-label="Close"><X size={19} /></button>
+        </div>
+        <form onSubmit={submit}>
+          <div className="modal-body">
+            <p className="account-modal-note">This creates a driver-only account. Share the initial password privately with the driver.</p>
+            <div className="account-form-fields">
+              <FormField label="Login email" required><input name="email" type="email" autoComplete="off" required maxLength={254} placeholder="driver@example.com" /></FormField>
+              <FormField label="Initial password (at least 12 characters)" required><input name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={200} /></FormField>
+            </div>
+            {error && <div className="form-error modal-error"><CircleAlert size={16} />{error}</div>}
+          </div>
+          <div className="modal-footer"><span className="required-note"><i /> Private account setup</span><div><button className="button button-ghost" onClick={onClose} type="button">Cancel</button><button className="button button-primary" type="submit" disabled={pending}>{pending ? "Creating…" : "Create login"}</button></div></div>
         </form>
       </section>
     </div>

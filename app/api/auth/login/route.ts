@@ -26,13 +26,6 @@ export async function POST(request: Request) {
     if (!user || !passwordMatches) {
       return NextResponse.json({ error: "Email or password is incorrect." }, { status: 401 });
     }
-    if (user.role === "DRIVER") {
-      return NextResponse.json(
-        { error: "Driver mobile access is not available in this release. Please contact your manager." },
-        { status: 403 },
-      );
-    }
-
     const session = await createSession(user.id);
     const response = NextResponse.json({
       user: { id: user.id, name: user.name, email: user.email, role: user.role },

@@ -7,10 +7,15 @@ Operations workspace for Maruthi Transport, a construction-material supply and t
 - PostgreSQL-backed staff sign-in with salted password hashes, revocable and expiring sessions, HTTP-only cookies, and server-side role checks.
 - Responsive dashboard with real order, payment, driver, vehicle, and delivery metrics.
 - Editable driver profiles, licence details, salary settings, vehicle records, document-expiry dates, driver assignments, search, and archive actions.
+- A separate driver portal for assigned deliveries, with manager-provisioned driver logins and controlled delivery status updates.
 - Driver and vehicle changes are recorded in an append-only audit log. Fleet records are archived, not hard-deleted.
 - Relational data models are prepared for customers, materials, orders, loads, payments, expenses, advances, and salary periods.
 
-The remaining customer/POS/billing, order/load workflows, salary processing, reports, invoice/PDF/printing, and driver self-service screens from the original specification are not implemented in this initial working release. Driver-role sign-in is therefore disabled until the driver self-service portal is available.
+Customer/POS order entry, salary processing, and invoice/PDF/printing workflows from the original specification are not implemented in this initial working release.
+
+### Driver accounts
+
+Managers can create a driver profile, then choose **Set up login** in the Drivers list. Set a unique email and an initial password of at least 12 characters, and share those credentials with the driver through a private channel. The driver signs in through the same login page and is shown only their own assigned deliveries. Driver accounts must be linked to an active driver profile; public account registration is not available.
 
 ## Requirements
 
@@ -45,6 +50,8 @@ The seed operation does not reset an existing account password. To change an adm
 
 ## Production deployment
 
-Use a managed PostgreSQL instance with encrypted connections, set `DATABASE_URL` and `ADMIN_EMAIL`/`ADMIN_PASSWORD` as deployment secrets, run `npm run db:deploy`, and run `npm run build`. Serve only behind HTTPS and apply login rate limits at the trusted ingress. Use unique production credentials, automated encrypted database backups, monitored restore tests, and a network policy that does not expose PostgreSQL publicly. Create staff accounts through a separately controlled provisioning process; do not enable public sign-up.
+For Vercel, import the GitHub repository and add the production environment variables in **Project Settings → Environment Variables**. Set `DATABASE_URL` to the Supabase PostgreSQL connection string appropriate for the Vercel runtime, and add unique `ADMIN_EMAIL`, `ADMIN_PASSWORD` (at least 12 characters), and optional `ADMIN_NAME` values. Never commit these values, paste them into source files, or put them in `NEXT_PUBLIC_*` variables. Supabase and Vercel should both use production-only credentials, and the Supabase database should not be exposed with permissive public access.
+
+Before the first production deployment, apply the Prisma schema with `npm run db:deploy` using the production database configuration, then deploy the application. Vercel can automatically deploy future commits pushed to the connected GitHub branch. Use HTTPS, apply login rate limits at the trusted ingress, keep encrypted database backups, test restores, and create staff accounts through the manager-only provisioning flow; do not enable public sign-up.
 
 Fleet management endpoints are restricted to super-admins and managers. Other role-specific workflows listed in the supplied product specification are not part of this release.
