@@ -9,6 +9,7 @@ import {
   Check,
   ChevronDown,
   CircleAlert,
+  ClipboardList,
   Clock3,
   CreditCard,
   Gauge,
@@ -150,9 +151,29 @@ type BillingOrder = {
   loadCount: number;
   createdAt: string;
 };
+type OrderMaterial = { id: string; name: string; unit: string; rate: number };
+type OrderRecord = {
+  id: string;
+  orderNumber: string;
+  customer: { name: string; phone: string };
+  material: string;
+  quantity: number;
+  unit: string;
+  rate: number;
+  totalAmount: number;
+  amountPaid: number;
+  paymentStatus: string;
+  paymentMethod: string;
+  status: string;
+  deliveryLocation: string;
+  deliveryDate: string | null;
+  createdAt: string;
+  loadCount: number;
+};
 
 const navItems = [
   { id: "dashboard", label: "Overview", icon: LayoutDashboard },
+  { id: "orders", label: "Orders", icon: ClipboardList },
   { id: "drivers", label: "Drivers", icon: Users },
   { id: "vehicles", label: "Vehicles", icon: Truck },
   { id: "expenses", label: "Expenses", icon: Box },
@@ -408,6 +429,8 @@ function AppShell({
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [orders, setOrders] = useState<OrderRecord[]>([]);
+  const [orderMaterials, setOrderMaterials] = useState<OrderMaterial[]>([]);
   const [billing, setBilling] = useState<{
     summary: { totalRevenue: number; totalCollected: number; outstanding: number; paidOrders: number; pendingOrders: number };
     openOrders: { id: string; orderNumber: string; customer: string; material: string; totalAmount: number; amountPaid: number; paymentStatus: string; createdAt: string }[];
@@ -456,6 +479,12 @@ function AppShell({
     setExpenses(result.expenses);
   }, []);
 
+  const loadOrders = useCallback(async () => {
+    const result = await api<{ orders: OrderRecord[]; materials: OrderMaterial[] }>("/api/orders");
+    setOrders(result.orders);
+    setOrderMaterials(result.materials);
+  }, []);
+
   const loadBilling = useCallback(async () => {
     const result = await api<{
       summary: {
@@ -489,6 +518,7 @@ function AppShell({
       if (section === "drivers") await loadDrivers();
       if (section === "vehicles") await loadVehicles();
       if (section === "expenses") await loadExpenses();
+      if (section === "orders") await loadOrders();
       if (section === "billing") await loadBilling();
       if (section === "reports") await loadReports();
     } catch (error) {
@@ -496,7 +526,7 @@ function AppShell({
     } finally {
       setBusy(false);
     }
-  }, [loadBilling, loadDashboard, loadDrivers, loadExpenses, loadReports, loadVehicles, section]);
+  }, [loadBilling, loadDashboard, loadDrivers, loadExpenses, loadOrders, loadReports, loadVehicles, section]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => void refresh(), 0);
@@ -659,6 +689,22 @@ function AppShell({
               onAddVehicle={() => { setEditingVehicle(null); setDialog("vehicle"); }}
               onNavigate={onSectionChange}
               canManage={canManage}
+            />
+          )}
+          {section === "orders" && canManage && (
+            <OrdersSection
+              orders={orders}
+              materials={orderMaterials}
+              busy={busy}
+              onRefresh={loadOrders}
+              onCreated={async (orderNumber, totalAmount) => {
+                setNotice(`Order ${orderNumber} created for ${currency(totalAmount)}.`);
+                try {
+                  await loadOrders();
+                } catch (error) {
+                  setPageError(error instanceof Error ? error.message : "Order was created, but the list could not be refreshed.");
+                }
+              }}
             />
           )}
           {dialog === "driver-account" && canManage && accountDriver && (
@@ -1092,6 +1138,213 @@ function ExpensesSection({ expenses, activeDrivers, vehicles, busy, onReload, ca
         ) : (
           <div className="activity-empty"><span className="activity-empty-icon"><Box size={21} /></span><strong>No expenses logged</strong><span>Add your first tyre, diesel or loading expense.</span></div>
         )}
+      </section>
+    </section>
+  );
+}
+
+function OrdersSection({
+  orders,
+  materials,
+  busy,
+  onRefresh,
+  onCreated,
+}: {
+  orders: OrderRecord[];
+  materials: OrderMaterial[];
+  busy: boolean;
+  onRefresh: () => Promise<void>;
+  onCreated: (orderNumber: string, totalAmount: number) => Promise<void>;
+}) {
+  const [form, setForm] = useState({
+    customerName: "",
+    customerPhone: "",
+    deliveryLocation: "",
+    materialId: "",
+    quantity: "1",
+    rate: "0",
+    deliveryCharge: "0",
+    otherCharges: "0",
+    discount: "0",
+    amountPaid: "0",
+    paymentMethod: "CREDIT",
+    deliveryDate: "",
+    notes: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const selectedMaterial = materials.find((material) => material.id === form.materialId);
+  const quantity = Number(form.quantity) || 0;
+  const rate = Number(form.rate) || 0;
+  const totalAmount = Math.max(
+    0,
+    Math.round(
+      (quantity * rate + (Number(form.deliveryCharge) || 0) +
+        (Number(form.otherCharges) || 0) - (Number(form.discount) || 0)) * 100,
+    ) / 100,
+  );
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const result = await api<{ order: { orderNumber: string; totalAmount: number } }>("/api/orders", {
+        method: "POST",
+        body: JSON.stringify({
+          ...form,
+          quantity: Number(form.quantity),
+          rate: Number(form.rate),
+          deliveryCharge: Number(form.deliveryCharge),
+          otherCharges: Number(form.otherCharges),
+          discount: Number(form.discount),
+          amountPaid: Number(form.amountPaid),
+          deliveryDate: form.deliveryDate || null,
+          notes: form.notes || null,
+        }),
+      });
+      setForm({
+        customerName: "",
+        customerPhone: "",
+        deliveryLocation: "",
+        materialId: "",
+        quantity: "1",
+        rate: "0",
+        deliveryCharge: "0",
+        otherCharges: "0",
+        discount: "0",
+        amountPaid: "0",
+        paymentMethod: "CREDIT",
+        deliveryDate: "",
+        notes: "",
+      });
+      await onCreated(result.order.orderNumber, result.order.totalAmount);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to create the order.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function refreshList() {
+    setError("");
+    try {
+      await onRefresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to refresh orders.");
+    }
+  }
+
+  return (
+    <section className="management-page">
+      <div className="page-heading">
+        <div><span className="eyebrow">CUSTOMER SALES</span><h1>Orders</h1><p>Create customer orders and track delivery and payment status.</p></div>
+      </div>
+      <section className="panel order-entry-panel">
+        <div className="panel-heading"><div><span className="eyebrow">NEW CUSTOMER ORDER</span><h2>Order details</h2></div></div>
+        {materials.length === 0 && !busy && <div className="form-error order-form-message"><CircleAlert size={16} />No active materials found. Add or activate materials before creating orders.</div>}
+        <form className="order-form" onSubmit={submit}>
+          <div className="order-form-grid">
+            <FormField label="Customer name" required>
+              <input value={form.customerName} onChange={(event) => setForm((current) => ({ ...current, customerName: event.target.value }))} required minLength={2} maxLength={100} placeholder="Customer name" />
+            </FormField>
+            <FormField label="Customer phone" required>
+              <input type="tel" value={form.customerPhone} onChange={(event) => setForm((current) => ({ ...current, customerPhone: event.target.value }))} required maxLength={20} placeholder="+91 98765 43210" />
+            </FormField>
+            <FormField label="Site / delivery location" required wide>
+              <input value={form.deliveryLocation} onChange={(event) => setForm((current) => ({ ...current, deliveryLocation: event.target.value }))} required minLength={3} maxLength={500} placeholder="Delivery address or site name" />
+            </FormField>
+            <FormField label="Material / service" required>
+              <select
+                value={form.materialId}
+                onChange={(event) => {
+                  const material = materials.find((item) => item.id === event.target.value);
+                  setForm((current) => ({
+                    ...current,
+                    materialId: event.target.value,
+                    rate: material ? String(material.rate) : "0",
+                  }));
+                }}
+                required
+              >
+                <option value="">Choose a material</option>
+                {materials.map((material) => <option key={material.id} value={material.id}>{material.name}</option>)}
+              </select>
+            </FormField>
+            <FormField label={`Quantity (${selectedMaterial?.unit || "unit"})`} required>
+              <input type="number" min="0.01" step="0.01" value={form.quantity} onChange={(event) => setForm((current) => ({ ...current, quantity: event.target.value }))} required />
+            </FormField>
+            <FormField label={`Rate per ${selectedMaterial?.unit || "unit"} (₹)`} required>
+              <input type="number" min="0" step="0.01" value={form.rate} onChange={(event) => setForm((current) => ({ ...current, rate: event.target.value }))} required />
+            </FormField>
+            <FormField label="Delivery charge (₹)">
+              <input type="number" min="0" step="0.01" value={form.deliveryCharge} onChange={(event) => setForm((current) => ({ ...current, deliveryCharge: event.target.value }))} />
+            </FormField>
+            <FormField label="Other charges (₹)">
+              <input type="number" min="0" step="0.01" value={form.otherCharges} onChange={(event) => setForm((current) => ({ ...current, otherCharges: event.target.value }))} />
+            </FormField>
+            <FormField label="Discount (₹)">
+              <input type="number" min="0" step="0.01" value={form.discount} onChange={(event) => setForm((current) => ({ ...current, discount: event.target.value }))} />
+            </FormField>
+            <FormField label="Amount received now (₹)">
+              <input type="number" min="0" step="0.01" max={totalAmount} value={form.amountPaid} onChange={(event) => setForm((current) => ({ ...current, amountPaid: event.target.value }))} />
+            </FormField>
+            <FormField label="Payment method" required>
+              <select value={form.paymentMethod} onChange={(event) => setForm((current) => ({ ...current, paymentMethod: event.target.value }))}>
+                <option value="CREDIT">Credit / unpaid</option>
+                <option value="CASH">Cash</option>
+                <option value="UPI">UPI</option>
+                <option value="BANK_TRANSFER">Bank transfer</option>
+              </select>
+            </FormField>
+            <FormField label="Delivery date">
+              <input type="date" value={form.deliveryDate} onChange={(event) => setForm((current) => ({ ...current, deliveryDate: event.target.value }))} />
+            </FormField>
+            <FormField label="Order notes" wide>
+              <textarea rows={2} value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} maxLength={1000} placeholder="Optional instructions" />
+            </FormField>
+          </div>
+          <div className="order-form-footer">
+            <div><span>Order total</span><strong>{currency(totalAmount)}</strong></div>
+            <button className="button button-primary" type="submit" disabled={saving || busy || materials.length === 0 || totalAmount <= 0 || Number(form.amountPaid) > totalAmount}>
+              {saving ? "Saving order…" : <><Plus size={16} /> Create order</>}
+            </button>
+          </div>
+          {error && <div className="form-error order-form-message"><CircleAlert size={16} />{error}</div>}
+        </form>
+      </section>
+
+      <section className="management-page order-list-section">
+        <div className="list-toolbar">
+          <div><span className="eyebrow">RECENT ORDERS</span><div className="list-count"><strong>{orders.length}</strong> {orders.length === 1 ? "order" : "orders"} shown</div></div>
+          <button className="button button-secondary" onClick={() => void refreshList()} disabled={busy} type="button"><RefreshCw size={15} /> Refresh list</button>
+        </div>
+        <div className="table-card">
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th>ORDER / DATE</th><th>CUSTOMER</th><th>SITE</th><th>MATERIAL</th><th>QTY</th><th>TOTAL</th><th>PAID</th><th>PAYMENT</th><th>ORDER STATUS</th><th>LOADS</th></tr></thead>
+              <tbody>
+                {orders.map((order) => (
+                  <tr key={order.id}>
+                    <td><strong className="table-primary">{order.orderNumber}</strong><small className="table-sub">{dateLabel(order.createdAt)}</small></td>
+                    <td><strong className="table-primary">{order.customer.name}</strong><small className="table-sub">{order.customer.phone}</small></td>
+                    <td className="order-site-cell">{order.deliveryLocation}</td>
+                    <td>{order.material}</td>
+                    <td>{order.quantity} {order.unit}</td>
+                    <td><strong className="table-primary">{currency(order.totalAmount)}</strong></td>
+                    <td>{currency(order.amountPaid)}</td>
+                    <td><StatusBadge status={order.paymentStatus} /><small className="table-sub">{order.paymentMethod.replaceAll("_", " ")}</small></td>
+                    <td><StatusBadge status={order.status} /></td>
+                    <td>{order.loadCount}</td>
+                  </tr>
+                ))}
+                {!busy && orders.length === 0 && <tr><td colSpan={10}><div className="activity-empty"><span className="activity-empty-icon"><ClipboardList size={21} /></span><strong>No orders yet</strong><span>Create your first order using the form above.</span></div></td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <div className="table-footer"><span>Showing the latest {orders.length} orders (up to 50)</span><span><ShieldCheck size={14} /> Order and payment details are restricted to managers</span></div>
+        </div>
       </section>
     </section>
   );

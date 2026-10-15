@@ -6,6 +6,7 @@ Operations workspace for Maruthi Transport, a construction-material supply and t
 
 - PostgreSQL-backed staff sign-in with salted password hashes, revocable and expiring sessions, HTTP-only cookies, and server-side role checks.
 - Responsive dashboard with real order, payment, driver, vehicle, and delivery metrics.
+- Manager-only order entry for customer/site, material and quantity, charges/discounts, scheduled delivery, and initial payments, with an order register.
 - Editable driver profiles, licence details, salary settings, vehicle records, document-expiry dates, driver assignments, search, and archive actions.
 - A separate driver portal for assigned deliveries, with manager-provisioned driver logins and controlled delivery status updates.
 - Driver and vehicle changes are recorded in an append-only audit log. Fleet records are archived, not hard-deleted.
