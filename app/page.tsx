@@ -134,6 +134,22 @@ type ExpenseFormData = {
   driverId: string;
   description: string;
 };
+type BillingOrder = {
+  id: string;
+  orderNumber: string;
+  customer: string;
+  material: string;
+  siteLocation: string;
+  quantity: number;
+  unit: string;
+  rate: number;
+  totalAmount: number;
+  amountPaid: number;
+  paymentStatus: string;
+  paymentMethod: string;
+  loadCount: number;
+  createdAt: string;
+};
 
 const navItems = [
   { id: "dashboard", label: "Overview", icon: LayoutDashboard },
@@ -395,6 +411,7 @@ function AppShell({
   const [billing, setBilling] = useState<{
     summary: { totalRevenue: number; totalCollected: number; outstanding: number; paidOrders: number; pendingOrders: number };
     openOrders: { id: string; orderNumber: string; customer: string; material: string; totalAmount: number; amountPaid: number; paymentStatus: string; createdAt: string }[];
+    recentOrders: BillingOrder[];
     recentPayments: { id: string; orderNumber: string; customer: string; amount: number; method: string; receivedAt: string; reference: string }[];
   } | null>(null);
   const [reports, setReports] = useState<{
@@ -449,6 +466,7 @@ function AppShell({
         pendingOrders: number;
       };
       openOrders: { id: string; orderNumber: string; customer: string; material: string; totalAmount: number; amountPaid: number; paymentStatus: string; createdAt: string }[];
+      recentOrders: BillingOrder[];
       recentPayments: { id: string; orderNumber: string; customer: string; amount: number; method: string; receivedAt: string; reference: string }[];
     }>("/api/billing");
     setBilling(result);
@@ -1079,7 +1097,7 @@ function ExpensesSection({ expenses, activeDrivers, vehicles, busy, onReload, ca
   );
 }
 
-function BillingSection({ billing, busy }: { billing: { summary: { totalRevenue: number; totalCollected: number; outstanding: number; paidOrders: number; pendingOrders: number }; openOrders: { id: string; orderNumber: string; customer: string; material: string; totalAmount: number; amountPaid: number; paymentStatus: string; createdAt: string }[]; recentPayments: { id: string; orderNumber: string; customer: string; amount: number; method: string; receivedAt: string; reference: string }[] } | null; busy: boolean; }) {
+function BillingSection({ billing, busy }: { billing: { summary: { totalRevenue: number; totalCollected: number; outstanding: number; paidOrders: number; pendingOrders: number }; openOrders: { id: string; orderNumber: string; customer: string; material: string; totalAmount: number; amountPaid: number; paymentStatus: string; createdAt: string }[]; recentOrders: BillingOrder[]; recentPayments: { id: string; orderNumber: string; customer: string; amount: number; method: string; receivedAt: string; reference: string }[] } | null; busy: boolean; }) {
   const cards = [
     { label: "Total revenue", value: billing ? currency(billing.summary.totalRevenue) : "—", icon: CreditCard, accent: "green", note: "All invoices" },
     { label: "Collected", value: billing ? currency(billing.summary.totalCollected) : "—", icon: Check, accent: "blue", note: "Payments received" },
@@ -1125,19 +1143,28 @@ function BillingSection({ billing, busy }: { billing: { summary: { totalRevenue:
           </div>
         </section>
         <section className="panel">
-          <div className="panel-heading"><div><span className="eyebrow">OPEN BALANCE</span><h2>Outstanding orders</h2></div></div>
-          <div className="recent-loads">
-            {billing?.openOrders && billing.openOrders.length > 0 ? (
-              billing.openOrders.map((order) => (
-                <div className="recent-load" key={order.id}>
-                  <span className="pulse-icon pulse-amber"><Clock3 size={15} /></span>
-                  <span className="recent-load-main"><strong>{order.orderNumber}</strong><small>{order.customer} · {order.material}</small></span>
-                  <span className="recent-load-driver"><strong>{currency(order.totalAmount)}</strong><small>{currency(order.totalAmount - order.amountPaid)} due</small></span>
-                  <StatusBadge status={order.paymentStatus} />
-                </div>
+          <div className="panel-heading"><div><span className="eyebrow">CUSTOMER ORDERS</span><h2>Order details</h2></div></div>
+          <div className="customer-order-list">
+            {billing?.recentOrders && billing.recentOrders.length > 0 ? (
+              billing.recentOrders.map((order) => (
+                <article className="customer-order-card" key={order.id}>
+                  <div className="customer-order-heading">
+                    <div><span>{order.orderNumber} · {dateLabel(order.createdAt)}</span><h3>{order.customer}</h3></div>
+                    <StatusBadge status={order.paymentStatus} />
+                  </div>
+                  <p className="customer-order-site"><MapPin size={14} />{order.siteLocation}</p>
+                  <div className="customer-order-facts">
+                    <span><small>Material</small><strong>{order.material}</strong></span>
+                    <span><small>Quantity / loads</small><strong>{order.quantity} {order.unit} · {order.loadCount} {order.loadCount === 1 ? "load" : "loads"}</strong></span>
+                    <span><small>Rate / {order.unit}</small><strong>{currency(order.rate)}</strong></span>
+                    <span><small>Total amount</small><strong>{currency(order.totalAmount)}</strong></span>
+                    <span><small>Payment method</small><strong>{order.paymentMethod.replaceAll("_", " ")}</strong></span>
+                    <span><small>Balance due</small><strong>{currency(Math.max(0, order.totalAmount - order.amountPaid))}</strong></span>
+                  </div>
+                </article>
               ))
             ) : (
-              <div className="activity-empty"><span className="activity-empty-icon"><ShieldCheck size={21} /></span><strong>Everything is settled</strong><span>There are no outstanding invoices at the moment.</span></div>
+              <div className="activity-empty"><span className="activity-empty-icon"><ShieldCheck size={21} /></span><strong>No customer orders yet</strong><span>Customer order details will appear here.</span></div>
             )}
           </div>
         </section>

@@ -10,7 +10,7 @@ export async function GET() {
   }
 
   try {
-    const [summary, openOrders, recentPayments] = await Promise.all([
+    const [summary, openOrders, recentOrders, recentPayments] = await Promise.all([
       prisma.order.aggregate({
         where: { archivedAt: null },
         _sum: { totalAmount: true, amountPaid: true },
@@ -31,6 +31,27 @@ export async function GET() {
           createdAt: true,
           customer: { select: { name: true } },
           material: { select: { name: true } },
+        },
+      }),
+      prisma.order.findMany({
+        where: { archivedAt: null },
+        orderBy: { createdAt: "desc" },
+        take: 8,
+        select: {
+          id: true,
+          orderNumber: true,
+          quantity: true,
+          unit: true,
+          rate: true,
+          totalAmount: true,
+          amountPaid: true,
+          paymentStatus: true,
+          paymentMethod: true,
+          deliveryLocation: true,
+          createdAt: true,
+          customer: { select: { name: true } },
+          material: { select: { name: true } },
+          _count: { select: { loads: true } },
         },
       }),
       prisma.payment.findMany({
@@ -70,6 +91,22 @@ export async function GET() {
         totalAmount: Number(order.totalAmount),
         amountPaid: Number(order.amountPaid),
         paymentStatus: order.paymentStatus,
+        createdAt: order.createdAt.toISOString(),
+      })),
+      recentOrders: recentOrders.map((order) => ({
+        id: order.id,
+        orderNumber: order.orderNumber,
+        customer: order.customer.name,
+        material: order.material.name,
+        siteLocation: order.deliveryLocation,
+        quantity: Number(order.quantity),
+        unit: order.unit,
+        rate: Number(order.rate),
+        totalAmount: Number(order.totalAmount),
+        amountPaid: Number(order.amountPaid),
+        paymentStatus: order.paymentStatus,
+        paymentMethod: order.paymentMethod,
+        loadCount: order._count.loads,
         createdAt: order.createdAt.toISOString(),
       })),
       recentPayments: recentPayments.map((payment) => ({

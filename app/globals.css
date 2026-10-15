@@ -1475,6 +1475,78 @@ button.pulse-tile:hover:not(:disabled) {
   flex-direction: column;
 }
 
+.customer-order-list {
+  display: grid;
+  max-height: 520px;
+  gap: 9px;
+  margin-top: 14px;
+  overflow: auto;
+}
+
+.customer-order-card {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.customer-order-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.customer-order-heading > div > span {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.customer-order-heading h3 {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+
+.customer-order-site {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  margin: 9px 0;
+  color: #59667b;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.customer-order-site svg {
+  flex: 0 0 auto;
+  color: var(--orange-dark);
+}
+
+.customer-order-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  padding-top: 9px;
+  border-top: 1px solid #eff1f4;
+}
+
+.customer-order-facts > span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.customer-order-facts small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.customer-order-facts strong {
+  overflow-wrap: anywhere;
+  font-size: 10px;
+}
+
 .recent-load {
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr) minmax(100px, 0.7fr) auto;
