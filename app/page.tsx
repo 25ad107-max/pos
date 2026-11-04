@@ -162,6 +162,10 @@ type OrderRecord = {
   unit: string;
   rate: number;
   totalAmount: number;
+  materialAmount: number;
+  deliveryCharge: number;
+  otherCharges: number;
+  discount: number;
   amountPaid: number;
   paymentStatus: string;
   paymentMethod: string;
@@ -1409,11 +1413,23 @@ function OrdersSection({
         </div>
       )}
       {receiptOrder && <div className="print-receipt" aria-hidden="true">
-        <h1>Order receipt</h1><p className="receipt-number">{receiptOrder.orderNumber}</p><p>Date: {dateLabel(receiptOrder.createdAt)}</p>
-        <hr /><h2>Customer</h2><p>{receiptOrder.customer.name}</p><p>{receiptOrder.customer.phone}</p>
-        <h2>Site / delivery address</h2><p>{receiptOrder.deliveryLocation}</p>
-        <h2>Order details</h2><table><tbody><tr><th>Material</th><td>{receiptOrder.material}</td></tr><tr><th>Quantity</th><td>{receiptOrder.quantity} {receiptOrder.unit}</td></tr><tr><th>Rate</th><td>{currency(receiptOrder.rate)}</td></tr><tr><th>Total</th><td>{currency(receiptOrder.totalAmount)}</td></tr><tr><th>Paid</th><td>{currency(receiptOrder.amountPaid)}</td></tr><tr><th>Balance</th><td>{currency(receiptOrder.totalAmount - receiptOrder.amountPaid)}</td></tr><tr><th>Payment status</th><td>{receiptOrder.paymentStatus.replaceAll("_", " ")}</td></tr></tbody></table>
-        <p className="receipt-thanks">Thank you for your order.</p>
+        <div className="receipt-canvas">
+          <img src="/receipt-template.png" alt="" />
+          <span className="receipt-field receipt-number-field">MT/{new Date(receiptOrder.createdAt).getFullYear()}/{receiptOrder.orderNumber}</span>
+          <span className="receipt-field receipt-date-field">{dateLabel(receiptOrder.createdAt)}</span>
+          <span className="receipt-field receipt-customer-field">{receiptOrder.customer.name}</span>
+          <span className="receipt-field receipt-address-field">{receiptOrder.deliveryLocation}</span>
+          <span className="receipt-field receipt-phone-field">{receiptOrder.customer.phone}</span>
+          <span className="receipt-field receipt-item-field">{receiptOrder.material}</span>
+          <span className="receipt-field receipt-quantity-field">{receiptOrder.quantity} {receiptOrder.unit}</span>
+          <span className="receipt-field receipt-rate-field">{currency(receiptOrder.rate)}</span>
+          <span className="receipt-field receipt-amount-field">{currency(receiptOrder.materialAmount)}</span>
+          <span className="receipt-field receipt-total-field">{currency(receiptOrder.totalAmount)}</span>
+          {receiptOrder.paymentMethod === "UPI" && <span className="receipt-check receipt-upi-check">✓</span>}
+          {receiptOrder.paymentMethod === "CASH" && <span className="receipt-check receipt-cash-check">✓</span>}
+          {receiptOrder.paymentMethod === "BANK_TRANSFER" && <span className="receipt-check receipt-bank-check">✓</span>}
+          <span className="receipt-field receipt-remarks-field">{receiptOrder.paymentStatus.replaceAll("_", " ")} · Received {currency(receiptOrder.amountPaid)} · Balance {currency(receiptOrder.totalAmount - receiptOrder.amountPaid)}{receiptOrder.deliveryCharge ? ` · Delivery ${currency(receiptOrder.deliveryCharge)}` : ""}{receiptOrder.otherCharges ? ` · Other ${currency(receiptOrder.otherCharges)}` : ""}{receiptOrder.discount ? ` · Discount ${currency(receiptOrder.discount)}` : ""}</span>
+        </div>
       </div>}
     </section>
   );

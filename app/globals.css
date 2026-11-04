@@ -2584,9 +2584,57 @@ button.pulse-tile:hover:not(:disabled) {
   display: none;
 }
 
+.receipt-canvas {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  overflow: hidden;
+  color: #111;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.receipt-canvas > img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.receipt-field,
+.receipt-check {
+  position: absolute;
+  z-index: 1;
+  display: block;
+  overflow: hidden;
+  color: #111;
+  font-size: 1.03vw;
+  font-weight: 700;
+  line-height: 1.1;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.receipt-number-field { left: 15.3%; top: 35.7%; width: 36%; }
+.receipt-date-field { left: 80.3%; top: 35.7%; width: 18%; }
+.receipt-customer-field { left: 17.5%; top: 40.9%; width: 79%; }
+.receipt-address-field { left: 17.5%; top: 44.1%; width: 79%; }
+.receipt-phone-field { left: 17.5%; top: 47.4%; width: 35%; }
+.receipt-item-field { left: 2.4%; top: 56.1%; width: 40%; }
+.receipt-quantity-field { left: 47%; top: 56.1%; width: 12%; text-align: center; }
+.receipt-rate-field { left: 63%; top: 56.1%; width: 14%; text-align: center; }
+.receipt-amount-field { left: 81%; top: 56.1%; width: 16%; text-align: center; }
+.receipt-total-field { left: 85%; top: 68.2%; width: 12%; text-align: center; }
+.receipt-check { font-size: 1.5vw; line-height: 1; }
+.receipt-upi-check { left: 16.4%; top: 72.5%; }
+.receipt-cash-check { left: 23.8%; top: 72.5%; }
+.receipt-bank-check { left: 32.2%; top: 72.5%; }
+.receipt-remarks-field { left: 9.5%; top: 77.2%; width: 68%; font-size: .78vw; }
+
 @media print {
   @page {
-    margin: 14mm;
+    size: A4 landscape;
+    margin: 10mm;
   }
 
   body * {
@@ -2600,42 +2648,24 @@ button.pulse-tile:hover:not(:disabled) {
 
   .print-receipt {
     position: absolute;
-    inset: 0 auto auto 0;
+    inset: 0;
     display: block !important;
     width: 100%;
+    height: auto;
     color: #111 !important;
     background: #fff !important;
-    font: 12pt/1.5 Arial, sans-serif;
+    font-size: 9pt;
   }
 
-  .print-receipt h1 {
-    margin: 0 0 4px;
-    font-size: 22pt;
+  .receipt-field {
+    font-size: 9pt;
   }
 
-  .print-receipt h2 {
-    margin: 18px 0 4px;
-    font-size: 13pt;
+  .receipt-check {
+    font-size: 12pt;
   }
 
-  .print-receipt p {
-    margin: 2px 0;
-  }
-
-  .print-receipt table {
-    width: 100%;
-    border-collapse: collapse;
-  }
-
-  .print-receipt th,
-  .print-receipt td {
-    padding: 6px;
-    border-bottom: 1px solid #ccc;
-    text-align: left;
-  }
-
-  .receipt-thanks {
-    margin-top: 26px !important;
-    text-align: center;
+  .receipt-remarks-field {
+    font-size: 7pt;
   }
 }
