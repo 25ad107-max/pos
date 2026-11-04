@@ -1177,6 +1177,7 @@ function OrdersSection({
   const [paymentOrder, setPaymentOrder] = useState<OrderRecord | null>(null);
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("CASH");
+  const [paymentStatus, setPaymentStatus] = useState("PENDING");
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [paymentError, setPaymentError] = useState("");
   const [receiptOrder, setReceiptOrder] = useState<OrderRecord | null>(null);
@@ -1251,7 +1252,7 @@ function OrdersSection({
     try {
       await api("/api/orders", {
         method: "PATCH",
-        body: JSON.stringify({ orderId: paymentOrder.id, amountReceived: Number(paymentAmount), paymentMethod }),
+        body: JSON.stringify({ orderId: paymentOrder.id, amountReceived: Number(paymentAmount || 0), paymentMethod, paymentStatus }),
       });
       setPaymentOrder(null);
       setPaymentAmount("");
@@ -1370,7 +1371,7 @@ function OrdersSection({
                     <td><StatusBadge status={order.status} /></td>
                     <td>{order.loadCount}</td>
                     <td className="order-actions-cell">
-                      {order.paymentStatus !== "PAID" && <button className="button button-secondary button-small" type="button" onClick={() => { setPaymentOrder(order); setPaymentAmount(""); setPaymentError(""); }}>Update payment</button>}
+                      {order.paymentStatus !== "PAID" && <button className="button button-secondary button-small" type="button" onClick={() => { setPaymentOrder(order); setPaymentAmount(""); setPaymentStatus(order.paymentStatus); setPaymentError(""); }}>Update payment</button>}
                       <button className="button button-secondary button-small" type="button" onClick={() => printReceipt(order)}><Printer size={14} /> Receipt</button>
                     </td>
                   </tr>
@@ -1389,11 +1390,20 @@ function OrdersSection({
             <p>{paymentOrder.customer.name} · {paymentOrder.deliveryLocation}</p>
             <div className="order-payment-summary"><span>Total {currency(paymentOrder.totalAmount)}</span><span>Paid {currency(paymentOrder.amountPaid)}</span><strong>Balance {currency(paymentOrder.totalAmount - paymentOrder.amountPaid)}</strong></div>
             <form className="order-payment-form" onSubmit={recordPayment}>
-              <FormField label="Payment received now (₹)" required><input type="number" min="0.01" max={paymentOrder.totalAmount - paymentOrder.amountPaid} step="0.01" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} required /></FormField>
-              <FormField label="Payment method" required><select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="CASH">Cash</option><option value="UPI">UPI</option><option value="BANK_TRANSFER">Bank transfer</option></select></FormField>
-              {paymentAmount && Number(paymentAmount) > 0 && <p className="order-payment-result">New status: <StatusBadge status={Number(paymentAmount) + paymentOrder.amountPaid >= paymentOrder.totalAmount ? "PAID" : "PARTIALLY_PAID"} /></p>}
+              <FormField label="Payment status" required><select value={paymentStatus} onChange={(event) => { setPaymentStatus(event.target.value); setPaymentAmount(""); }}>
+                <option value="PENDING" disabled={paymentOrder.amountPaid > 0}>Pending</option>
+                <option value="PARTIALLY_PAID">Partially paid</option>
+                <option value="PAID">Paid</option>
+              </select></FormField>
+              {paymentStatus !== "PENDING" && <>
+                <FormField label="Payment received now (₹)" required><input type="number" min="0.01" max={paymentOrder.totalAmount - paymentOrder.amountPaid} step="0.01" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} required /></FormField>
+                <FormField label="Payment method" required><select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="CASH">Cash</option><option value="UPI">UPI</option><option value="BANK_TRANSFER">Bank transfer</option></select></FormField>
+              </>}
+              <p className="order-payment-result">Status after saving: <StatusBadge status={paymentStatus} /></p>
+              {paymentStatus === "PAID" && Number(paymentAmount) + paymentOrder.amountPaid !== paymentOrder.totalAmount && <p className="form-hint">To mark this order paid, enter the full balance of {currency(paymentOrder.totalAmount - paymentOrder.amountPaid)}.</p>}
+              {paymentStatus === "PARTIALLY_PAID" && Number(paymentAmount) + paymentOrder.amountPaid >= paymentOrder.totalAmount && <p className="form-hint">For Partially Paid, the received amount must be less than the remaining balance.</p>}
               {paymentError && <div className="form-error"><CircleAlert size={16} />{paymentError}</div>}
-              <div className="order-form-footer"><button className="button button-secondary" type="button" onClick={() => setPaymentOrder(null)}>Cancel</button><button className="button button-primary" type="submit" disabled={paymentSaving || !paymentAmount || Number(paymentAmount) > paymentOrder.totalAmount - paymentOrder.amountPaid}>{paymentSaving ? "Saving…" : "Save payment"}</button></div>
+              <div className="order-form-footer"><button className="button button-secondary" type="button" onClick={() => setPaymentOrder(null)}>Cancel</button><button className="button button-primary" type="submit" disabled={paymentSaving || (paymentStatus !== "PENDING" && (!paymentAmount || Number(paymentAmount) > paymentOrder.totalAmount - paymentOrder.amountPaid)) || (paymentStatus === "PAID" && Number(paymentAmount) + paymentOrder.amountPaid !== paymentOrder.totalAmount) || (paymentStatus === "PARTIALLY_PAID" && Number(paymentAmount) + paymentOrder.amountPaid >= paymentOrder.totalAmount)}>{paymentSaving ? "Saving…" : "Save payment status"}</button></div>
             </form>
           </section>
         </div>

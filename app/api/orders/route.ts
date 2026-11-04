@@ -247,8 +247,9 @@ export async function POST(request: Request) {
 }
 
 const paymentUpdateInput = z.object({
-  amountReceived: z.number().finite().positive().multipleOf(0.01).max(100000000),
+  amountReceived: z.number().finite().min(0).multipleOf(0.01).max(100000000),
   paymentMethod: z.enum(["CASH", "UPI", "BANK_TRANSFER"]),
+  paymentStatus: z.enum(["PENDING", "PARTIALLY_PAID", "PAID"]),
 });
 
 export async function PATCH(request: Request) {
@@ -275,16 +276,28 @@ export async function PATCH(request: Request) {
 
       const amountPaid = Number(order.amountPaid) + parsed.data.amountReceived;
       if (amountPaid > Number(order.totalAmount)) throw new Error("PAYMENT_EXCEEDS_BALANCE");
-      const paymentStatus = amountPaid >= Number(order.totalAmount)
-        ? "PAID"
-        : "PARTIALLY_PAID";
-      await tx.order.update({ where: { id: order.id }, data: { amountPaid, paymentStatus, paymentMethod: parsed.data.paymentMethod } });
-      await tx.payment.create({
-        data: {
-          paymentNumber: reference("PAY"), orderId: order.id, amount: parsed.data.amountReceived,
-          method: parsed.data.paymentMethod, reference: "Additional order payment", createdBy: user!.id,
-        },
+      const paymentStatus = parsed.data.paymentStatus;
+      if (paymentStatus !== "PENDING" && parsed.data.amountReceived === 0) {
+        throw new Error("PAYMENT_AMOUNT_REQUIRED");
+      }
+      const isValidStatusAmount = paymentStatus === "PENDING"
+        ? amountPaid === 0
+        : paymentStatus === "PARTIALLY_PAID"
+          ? amountPaid > 0 && amountPaid < Number(order.totalAmount)
+          : amountPaid === Number(order.totalAmount);
+      if (!isValidStatusAmount) throw new Error("PAYMENT_STATUS_AMOUNT_MISMATCH");
+      await tx.order.update({
+        where: { id: order.id },
+        data: { amountPaid, paymentStatus, ...(parsed.data.amountReceived > 0 ? { paymentMethod: parsed.data.paymentMethod } : {}) },
       });
+      if (parsed.data.amountReceived > 0) {
+        await tx.payment.create({
+          data: {
+            paymentNumber: reference("PAY"), orderId: order.id, amount: parsed.data.amountReceived,
+            method: parsed.data.paymentMethod, reference: "Additional order payment", createdBy: user!.id,
+          },
+        });
+      }
       await tx.auditLog.create({
         data: {
           actorId: user!.id, action: "UPDATE", entityType: "ORDER", entityId: order.id,
@@ -298,6 +311,12 @@ export async function PATCH(request: Request) {
   } catch (error) {
     if (error instanceof Error && error.message === "PAYMENT_EXCEEDS_BALANCE") {
       return NextResponse.json({ error: "Payment cannot exceed the remaining balance." }, { status: 422 });
+    }
+    if (error instanceof Error && error.message === "PAYMENT_STATUS_AMOUNT_MISMATCH") {
+      return NextResponse.json({ error: "The received amount does not match the selected payment status." }, { status: 422 });
+    }
+    if (error instanceof Error && error.message === "PAYMENT_AMOUNT_REQUIRED") {
+      return NextResponse.json({ error: "Enter the payment received to set a paid status." }, { status: 422 });
     }
     console.error("[orders:payment] Unable to update order payment.", error);
     return NextResponse.json({ error: "Unable to update the order payment." }, { status: 500 });
