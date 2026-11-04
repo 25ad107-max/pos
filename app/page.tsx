@@ -19,6 +19,7 @@ import {
   Menu,
   Phone,
   Plus,
+  Printer,
   RefreshCw,
   Search,
   Settings2,
@@ -1173,6 +1174,12 @@ function OrdersSection({
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [paymentOrder, setPaymentOrder] = useState<OrderRecord | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("CASH");
+  const [paymentSaving, setPaymentSaving] = useState(false);
+  const [paymentError, setPaymentError] = useState("");
+  const [receiptOrder, setReceiptOrder] = useState<OrderRecord | null>(null);
 
   const selectedMaterial = materials.find((material) => material.id === form.materialId);
   const quantity = Number(form.quantity) || 0;
@@ -1234,6 +1241,31 @@ function OrdersSection({
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to refresh orders.");
     }
+  }
+
+  async function recordPayment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!paymentOrder) return;
+    setPaymentSaving(true);
+    setPaymentError("");
+    try {
+      await api("/api/orders", {
+        method: "PATCH",
+        body: JSON.stringify({ orderId: paymentOrder.id, amountReceived: Number(paymentAmount), paymentMethod }),
+      });
+      setPaymentOrder(null);
+      setPaymentAmount("");
+      await onRefresh();
+    } catch (reason) {
+      setPaymentError(reason instanceof Error ? reason.message : "Unable to update payment status.");
+    } finally {
+      setPaymentSaving(false);
+    }
+  }
+
+  function printReceipt(order: OrderRecord) {
+    setReceiptOrder(order);
+    window.setTimeout(() => window.print(), 100);
   }
 
   return (
@@ -1323,7 +1355,7 @@ function OrdersSection({
         <div className="table-card">
           <div className="table-scroll">
             <table>
-              <thead><tr><th>ORDER / DATE</th><th>CUSTOMER</th><th>SITE</th><th>MATERIAL</th><th>QTY</th><th>TOTAL</th><th>PAID</th><th>PAYMENT</th><th>ORDER STATUS</th><th>LOADS</th></tr></thead>
+              <thead><tr><th>ORDER / DATE</th><th>CUSTOMER</th><th>SITE</th><th>MATERIAL</th><th>QTY</th><th>TOTAL</th><th>PAID</th><th>PAYMENT</th><th>ORDER STATUS</th><th>LOADS</th><th>ACTIONS</th></tr></thead>
               <tbody>
                 {orders.map((order) => (
                   <tr key={order.id}>
@@ -1337,15 +1369,42 @@ function OrdersSection({
                     <td><StatusBadge status={order.paymentStatus} /><small className="table-sub">{order.paymentMethod.replaceAll("_", " ")}</small></td>
                     <td><StatusBadge status={order.status} /></td>
                     <td>{order.loadCount}</td>
+                    <td className="order-actions-cell">
+                      {order.paymentStatus !== "PAID" && <button className="button button-secondary button-small" type="button" onClick={() => { setPaymentOrder(order); setPaymentAmount(""); setPaymentError(""); }}>Update payment</button>}
+                      <button className="button button-secondary button-small" type="button" onClick={() => printReceipt(order)}><Printer size={14} /> Receipt</button>
+                    </td>
                   </tr>
                 ))}
-                {!busy && orders.length === 0 && <tr><td colSpan={10}><div className="activity-empty"><span className="activity-empty-icon"><ClipboardList size={21} /></span><strong>No orders yet</strong><span>Create your first order using the form above.</span></div></td></tr>}
+                {!busy && orders.length === 0 && <tr><td colSpan={11}><div className="activity-empty"><span className="activity-empty-icon"><ClipboardList size={21} /></span><strong>No orders yet</strong><span>Create your first order using the form above.</span></div></td></tr>}
               </tbody>
             </table>
           </div>
           <div className="table-footer"><span>Showing the latest {orders.length} orders (up to 50)</span><span><ShieldCheck size={14} /> Order and payment details are restricted to managers</span></div>
         </div>
       </section>
+      {paymentOrder && (
+        <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !paymentSaving) setPaymentOrder(null); }}>
+          <section className="panel order-payment-dialog" role="dialog" aria-modal="true" aria-labelledby="payment-dialog-title">
+            <div className="panel-heading"><div><span className="eyebrow">{paymentOrder.orderNumber}</span><h2 id="payment-dialog-title">Update payment status</h2></div><button className="button button-secondary button-icon" type="button" onClick={() => setPaymentOrder(null)} aria-label="Close"><X size={16} /></button></div>
+            <p>{paymentOrder.customer.name} · {paymentOrder.deliveryLocation}</p>
+            <div className="order-payment-summary"><span>Total {currency(paymentOrder.totalAmount)}</span><span>Paid {currency(paymentOrder.amountPaid)}</span><strong>Balance {currency(paymentOrder.totalAmount - paymentOrder.amountPaid)}</strong></div>
+            <form className="order-payment-form" onSubmit={recordPayment}>
+              <FormField label="Payment received now (₹)" required><input type="number" min="0.01" max={paymentOrder.totalAmount - paymentOrder.amountPaid} step="0.01" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} required /></FormField>
+              <FormField label="Payment method" required><select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option value="CASH">Cash</option><option value="UPI">UPI</option><option value="BANK_TRANSFER">Bank transfer</option></select></FormField>
+              {paymentAmount && Number(paymentAmount) > 0 && <p className="order-payment-result">New status: <StatusBadge status={Number(paymentAmount) + paymentOrder.amountPaid >= paymentOrder.totalAmount ? "PAID" : "PARTIALLY_PAID"} /></p>}
+              {paymentError && <div className="form-error"><CircleAlert size={16} />{paymentError}</div>}
+              <div className="order-form-footer"><button className="button button-secondary" type="button" onClick={() => setPaymentOrder(null)}>Cancel</button><button className="button button-primary" type="submit" disabled={paymentSaving || !paymentAmount || Number(paymentAmount) > paymentOrder.totalAmount - paymentOrder.amountPaid}>{paymentSaving ? "Saving…" : "Save payment"}</button></div>
+            </form>
+          </section>
+        </div>
+      )}
+      {receiptOrder && <div className="print-receipt" aria-hidden="true">
+        <h1>Order receipt</h1><p className="receipt-number">{receiptOrder.orderNumber}</p><p>Date: {dateLabel(receiptOrder.createdAt)}</p>
+        <hr /><h2>Customer</h2><p>{receiptOrder.customer.name}</p><p>{receiptOrder.customer.phone}</p>
+        <h2>Site / delivery address</h2><p>{receiptOrder.deliveryLocation}</p>
+        <h2>Order details</h2><table><tbody><tr><th>Material</th><td>{receiptOrder.material}</td></tr><tr><th>Quantity</th><td>{receiptOrder.quantity} {receiptOrder.unit}</td></tr><tr><th>Rate</th><td>{currency(receiptOrder.rate)}</td></tr><tr><th>Total</th><td>{currency(receiptOrder.totalAmount)}</td></tr><tr><th>Paid</th><td>{currency(receiptOrder.amountPaid)}</td></tr><tr><th>Balance</th><td>{currency(receiptOrder.totalAmount - receiptOrder.amountPaid)}</td></tr><tr><th>Payment status</th><td>{receiptOrder.paymentStatus.replaceAll("_", " ")}</td></tr></tbody></table>
+        <p className="receipt-thanks">Thank you for your order.</p>
+      </div>}
     </section>
   );
 }

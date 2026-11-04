@@ -2519,3 +2519,123 @@ button.pulse-tile:hover:not(:disabled) {
     letter-spacing: 0.07em;
   }
 }
+
+.order-actions-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.button-small {
+  min-height: 30px;
+  padding: 0 9px;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.dialog-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgb(15 23 42 / 48%);
+}
+
+.order-payment-dialog {
+  width: min(100%, 460px);
+  padding: 22px;
+  box-shadow: 0 24px 80px rgb(15 23 42 / 24%);
+}
+
+.order-payment-dialog > p {
+  margin: 12px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.order-payment-summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.order-payment-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.order-payment-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 !important;
+  color: var(--ink) !important;
+}
+
+.print-receipt {
+  display: none;
+}
+
+@media print {
+  @page {
+    margin: 14mm;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .print-receipt,
+  .print-receipt * {
+    visibility: visible !important;
+  }
+
+  .print-receipt {
+    position: absolute;
+    inset: 0 auto auto 0;
+    display: block !important;
+    width: 100%;
+    color: #111 !important;
+    background: #fff !important;
+    font: 12pt/1.5 Arial, sans-serif;
+  }
+
+  .print-receipt h1 {
+    margin: 0 0 4px;
+    font-size: 22pt;
+  }
+
+  .print-receipt h2 {
+    margin: 18px 0 4px;
+    font-size: 13pt;
+  }
+
+  .print-receipt p {
+    margin: 2px 0;
+  }
+
+  .print-receipt table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .print-receipt th,
+  .print-receipt td {
+    padding: 6px;
+    border-bottom: 1px solid #ccc;
+    text-align: left;
+  }
+
+  .receipt-thanks {
+    margin-top: 26px !important;
+    text-align: center;
+  }
+}
